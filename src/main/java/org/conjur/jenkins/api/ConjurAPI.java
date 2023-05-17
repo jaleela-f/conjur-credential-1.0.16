@@ -9,6 +9,12 @@ import java.util.Map;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
+import org.conjur.jenkins.configuration.ConjurConfiguration;
+import org.conjur.jenkins.configuration.ConjurJITJobProperty;
+import org.conjur.jenkins.configuration.FolderConjurConfiguration;
+import org.conjur.jenkins.configuration.GlobalConjurConfiguration;
+import org.conjur.jenkins.jwtauth.impl.JwtToken;
+
 import com.cloudbees.hudson.plugins.folder.AbstractFolder;
 import com.cloudbees.plugins.credentials.CredentialsMatchers;
 import com.cloudbees.plugins.credentials.CredentialsProvider;
@@ -16,13 +22,6 @@ import com.cloudbees.plugins.credentials.common.UsernamePasswordCredentials;
 import com.cloudbees.plugins.credentials.domains.DomainRequirement;
 
 import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
-
-import org.conjur.jenkins.configuration.ConjurConfiguration;
-import org.conjur.jenkins.configuration.ConjurJITJobProperty;
-import org.conjur.jenkins.configuration.FolderConjurConfiguration;
-import org.conjur.jenkins.configuration.GlobalConjurConfiguration;
-import org.conjur.jenkins.jwtauth.impl.JwtToken;
-
 import hudson.model.AbstractItem;
 import hudson.model.Item;
 import hudson.model.ItemGroup;
@@ -65,6 +64,7 @@ public class ConjurAPI {
 			conjurAuthn.apiKey = env.get("CONJUR_AUTHN_API_KEY");
 	}
 
+	@SuppressWarnings("deprecation")
 	@SuppressFBWarnings
 	public static String getAuthorizationToken(OkHttpClient client, ConjurConfiguration configuration,
 			ModelObject context) throws IOException {
@@ -73,19 +73,19 @@ public class ConjurAPI {
 
 		List<UsernamePasswordCredentials> availableCredentials = null;
 
-		availableCredentials = CredentialsProvider.lookupCredentials(UsernamePasswordCredentials.class,
-				Jenkins.get(), ACL.SYSTEM, Collections.<DomainRequirement>emptyList());
+		availableCredentials = CredentialsProvider.lookupCredentials(UsernamePasswordCredentials.class, Jenkins.get(),
+				ACL.SYSTEM, Collections.<DomainRequirement>emptyList());
 
 		if (context != null) {
 			if (context instanceof Run) {
 				availableCredentials.addAll(CredentialsProvider.lookupCredentials(UsernamePasswordCredentials.class,
-				((Run) context).getParent(), ACL.SYSTEM, Collections.<DomainRequirement>emptyList()));
+						((Run) context).getParent(), ACL.SYSTEM, Collections.<DomainRequirement>emptyList()));
 			} else {
-				if((context instanceof AbstractItem)) {
+				// if((context instanceof AbstractItem)) {
 				availableCredentials.addAll(CredentialsProvider.lookupCredentials(UsernamePasswordCredentials.class,
-				(AbstractItem) context, ACL.SYSTEM, Collections.<DomainRequirement>emptyList()));
-			      }
-		    }
+						(AbstractItem) context, ACL.SYSTEM, Collections.<DomainRequirement>emptyList()));
+				// }
+			}
 		}
 
 		ConjurAuthnInfo conjurAuthn = getConjurAuthnInfo(configuration, availableCredentials, context);
@@ -94,16 +94,17 @@ public class ConjurAPI {
 		if (conjurAuthn.login != null && conjurAuthn.apiKey != null) {
 			LOGGER.log(Level.FINE, "Authenticating with Conjur (authn)");
 			request = new Request.Builder()
-				.url(String.format("%s/%s/%s/%s/authenticate", conjurAuthn.applianceUrl, conjurAuthn.authnPath,
-						conjurAuthn.account, URLEncoder.encode(conjurAuthn.login, "utf-8")))
-				.post(RequestBody.create(MediaType.parse("text/plain"), conjurAuthn.apiKey)).build();
+					.url(String.format("%s/%s/%s/%s/authenticate", conjurAuthn.applianceUrl, conjurAuthn.authnPath,
+							conjurAuthn.account, URLEncoder.encode(conjurAuthn.login, "utf-8")))
+					.post(RequestBody.create(MediaType.parse("text/plain"), conjurAuthn.apiKey)).build();
 		} else if (conjurAuthn.authnPath != null & conjurAuthn.apiKey != null) {
-			String authnPath = conjurAuthn.authnPath.indexOf("/") == -1 ? "authn-jwt/" + conjurAuthn.authnPath : conjurAuthn.authnPath;
+			String authnPath = conjurAuthn.authnPath.indexOf("/") == -1 ? "authn-jwt/" + conjurAuthn.authnPath
+					: conjurAuthn.authnPath;
 			LOGGER.log(Level.FINE, "Authenticating with Conjur (JWT) authnPath={0}", authnPath);
 			request = new Request.Builder()
-				.url(String.format("%s/%s/%s/authenticate", conjurAuthn.applianceUrl, authnPath,
-						conjurAuthn.account))
-				.post(RequestBody.create(MediaType.parse("text/plain"), conjurAuthn.apiKey)).build();
+					.url(String.format("%s/%s/%s/authenticate", conjurAuthn.applianceUrl, authnPath,
+							conjurAuthn.account))
+					.post(RequestBody.create(MediaType.parse("text/plain"), conjurAuthn.apiKey)).build();
 
 		}
 
@@ -165,12 +166,12 @@ public class ConjurAPI {
 			conjurAuthn.login = null;
 			conjurAuthn.authnPath = globalconfig.getAuthWebServiceId();
 			conjurAuthn.apiKey = "jwt=" + token;
-		}		
+		}
 	}
 
 	@SuppressFBWarnings
 	public static String getSecret(OkHttpClient client, ConjurConfiguration configuration, String authToken,
-		String variablePath) throws IOException {
+			String variablePath) throws IOException {
 
 		ConjurAuthnInfo conjurAuthn = getConjurAuthnInfo(configuration, null, null);
 
@@ -216,20 +217,18 @@ public class ConjurAPI {
 
 	public static ConjurConfiguration getConfigurationFromContext(ModelObject context, ModelObject storeContext) {
 
-		ModelObject effectiveContext = context != null? context : storeContext;
+		ModelObject effectiveContext = context != null ? context : storeContext;
 
-        Item contextObject = null;
+		Item contextObject = null;
 		ConjurJITJobProperty conjurJobConfig = null;
 
-
-        if (effectiveContext instanceof Run) {
-            Run run = (Run) effectiveContext;
+		if (effectiveContext instanceof Run) {
+			Run run = (Run) effectiveContext;
 			conjurJobConfig = (ConjurJITJobProperty) run.getParent().getProperty(ConjurJITJobProperty.class);
-            contextObject = run.getParent();
-        } else if (effectiveContext instanceof AbstractItem) {
+			contextObject = run.getParent();
+		} else if (effectiveContext instanceof AbstractItem) {
 			contextObject = (Item) effectiveContext;
 		}
-
 
 		ConjurConfiguration conjurConfig = GlobalConjurConfiguration.get().getConjurConfiguration();
 
@@ -253,8 +252,8 @@ public class ConjurAPI {
 
 	@SuppressWarnings("unchecked")
 	private static ConjurConfiguration inheritedConjurConfiguration(Item job) {
-		for (ItemGroup<? extends Item> g = job !=null?
-				job.getParent():null; g instanceof AbstractFolder; g = ((AbstractFolder<? extends Item>) g).getParent()) {
+		for (ItemGroup<? extends Item> g = job
+				.getParent(); g instanceof AbstractFolder; g = ((AbstractFolder<? extends Item>) g).getParent()) {
 			FolderConjurConfiguration fconf = ((AbstractFolder<?>) g).getProperties()
 					.get(FolderConjurConfiguration.class);
 			if (!(fconf == null || fconf.getInheritFromParent())) {
